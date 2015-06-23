@@ -1,0 +1,12 @@
+[Unit]
+Description=Container CONTAINERNAME
+Requires=docker.service
+After=docker.service
+
+[Service]
+ExecStartPre=-/usr/bin/docker start CONTAINERNAME
+ExecStart=/usr/bin/docker attach CONTAINERNAME
+ExecStop=/usr/bin/docker stop CONTAINERNAME
+
+[Install]
+WantedBy=multi-user.target
