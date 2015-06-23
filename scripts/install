@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# Retrieve arguments
+domain=$1
+path=$2
+is_public=$3
+
+# app -> your app name
+# repository -> your repository from http://registry.hub.docker.com
+# autostart -> "Yes" to make the container start at boot, "No" to disable
+# volume -> "Yes" to mount /home/yunohost.docker/container-app as /home/yunohost in the container
+# command -> the command to run the container
+
+app=dockerapp
+repository="tuxeh/sonarr" #
+autostart="Yes"
+volume="No"
+command="-p 8989:8989"
+
+# COPY PASTE THE FOLLOWING for all the ports you forward to your host
+sudo yunohost app checkport 8989
+if [[ ! $? -eq 0 ]]; then
+  exit 1
+fi
+
+
+# END OF SETUP. DO NOT MODIFY BELOW
+
+# Check domain/path availability
+sudo yunohost app checkurl $domain$path -a $app \
+	|| (echo "Path not available: $domain$path" && exit 1)
+
+# Remove trailing "/" for next commands
+path=${path%/}
+
+# Install Docker if it is not installed yet
+if [ -f /usr/bin/docker ]; then
+	echo "Docker is already installed"
+else
+	echo "Docker will now be installed"
+	sudo apt-get install curl -y -qq
+	sudo curl -sSL https://get.docker.com/ | sh
+	sudo yunohost service add docker
+	sudo update-rc.d docker defaults
+	sudo service docker start 
+	sudo usermod -aG docker admin
+	newgrp docker
+fi
+sudo service docker restart
+
+# Create Docker container
+if [ "$volume" = "Yes" ];
+then
+	sudo mkdir -p /home/yunohost.docker/container-$app
+	command+=" -v /home/yunohost.docker/container-$app:/home/yunohost"
+fi
+sudo yunohost app setting $app volume $volume
+
+if [ "$autostart" = "Yes" ];
+then
+	command+=" --restart always"
+fi
+
+sudo docker run -d $command --name=$app $repository
+
+# Manage container as daemon with systemd - only compatible with Debian Jessie & YNH 2.2
+sudo sed -i "s@CONTAINERNAME@$app@g" ../conf/systemd.service
+sudo cp ../conf/systemd.service /etc/systemd/system/container-$app.service
+sudo chmod 777 /etc/systemd/system/container-$app.service
+sudo systemctl enable /etc/systemd/system/container-$app.service
+sudo systemctl daemon-reload
+sudo yunohost service add container-$app
+
+# Configure Nginx and reload
+sed -i "s@PATHTOCHANGE@$path@g" ../conf/nginx.conf
+sudo cp ../conf/nginx.conf /etc/nginx/conf.d/$domain.d/$app.conf
+
+if [ "$is_public" = "Yes" ];
+then
+	sudo yunohost app setting $app skipped_uris -v "/"
+fi
+
+sudo service nginx reload
+echo $?

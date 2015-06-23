@@ -1,0 +1,24 @@
+#!/bin/bash
+
+app=dockerapp
+
+# Remove Docker container and systemd service but keep the pulled image and Docker
+sudo yunohost service remove container-$app
+sudo rm /etc/systemd/system/container-$app.service
+sudo docker stop $app
+sudo docker rm $app
+
+# Remove NGINX conf
+domain=$(sudo yunohost app setting $app domain)
+sudo rm /etc/nginx/conf.d/$domain.d/$app.conf
+
+# Remove volume folder
+volume=$(sudo yunohost app setting $app volume)
+if [ "$volume" = "Yes" ];
+then
+	sudo rm -rf /home/yunohost.docker/container-$app
+fi
+
+# Reload
+sudo service nginx reload
+sudo yunohost app ssowatconf 
